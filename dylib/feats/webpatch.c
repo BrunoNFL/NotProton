@@ -1485,6 +1485,20 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     "]},\"exe\")," \
     "bv=G(\"CX_GRAPHICS_BACKEND\"),b=\"auto\"===bv||fex&&\"d3dmetal\"===bv?\"\":bv," \
     "dm=!fex&&(\"\"===b||\"d3dmetal\"===b)," \
+    "btl=G(\"NOTPROTON_BOTTLE\")," \
+    "na=G(\"NOTPROTON_NATIVE_APP\")," \
+    "isn=!!(na&&\"0\"!==na)," \
+    "cx=G(\"NOTPROTON_CX_APP\")," \
+    "vc=G(\"NOTPROTON_VAC_STEAM\")," \
+    "tb=G(\"NOTPROTON_TERMINATE_BOTTLE\")," \
+    "BT=[{data:\"\",label:\"Default (Isolated Prefix)\"}," \
+    "{data:\"Steam\",label:\"CrossOver Bottle: Steam\"}," \
+    "{data:\"Mirror_s Edge\",label:\"CrossOver Bottle: Mirror_s Edge\"}]," \
+    "rgB=BT.some(x=>x.data===btl)?BT:BT.concat([{data:btl,label:\"CrossOver Bottle: \"+btl}])," \
+    "CXA=[{data:\"\",label:\"CrossOver App: Auto (Detect)\"}," \
+    "{data:\"CrossOver\",label:\"CrossOver App: Release\"}," \
+    "{data:\"CrossOver Preview\",label:\"CrossOver Preview\"}," \
+    "{data:\"CrossOver Preview Rosetta\",label:\"CrossOver Preview (Rosetta)\"}]," \
     "dx=\"\"===b||\"dxmt\"===b," \
     "sw=\"1\"===G(\"DXMT_METALFX_SPATIAL_SWAPCHAIN\")," \
     "F=\"d3d11.metalSpatialUpscaleFactor=\",fk=" NP_CX_FACTOR_ENTRY "," \
@@ -1522,25 +1536,40 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
        with nothing to deliver. */ \
     "const npRows=ours?MSCXFeat:MSCXFeat.filter(f=>!f.rn&&(f.ty" \
     "?/^NOTPROTON_ENV_/.test(f.k):f.rq||(f.ev||[]).length))," \
-    "npBody=[npCx&&head," \
+    "npBody=[npCx&&!isn&&head," \
+    "npCx&&app&&(0," RT ".jsxs)(" BARREL ".XY,{label:\"CrossOver Bottle / Prefix\",children:[" \
+    "(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:\"Launch Native macOS Port (.app)\"," \
+    "checked:isn," \
+    "onChange:v=>s([[\"NOTPROTON_NATIVE_APP\",v?\"1\":\"\"]].concat(v?[[\"NOTPROTON_BOTTLE\",\"\"],[\"NOTPROTON_VAC_STEAM\",\"\"],[\"NOTPROTON_CX_APP\",\"\"],[\"NOTPROTON_TERMINATE_BOTTLE\",\"\"]]:[]))})," \
+    "!isn&&(0," RT ".jsx)(" BARREL ".m,{rgOptions:rgB,selectedOption:btl," \
+    "onChange:v=>s([[\"NOTPROTON_BOTTLE\",v.data]].concat(v.data?[]:[[\"NOTPROTON_VAC_STEAM\",\"\"],[\"NOTPROTON_CX_APP\",\"\"],[\"NOTPROTON_TERMINATE_BOTTLE\",\"\"]]))})," \
+    "!isn&&btl&&(0," RT ".jsx)(" BARREL ".m,{rgOptions:CXA,selectedOption:cx," \
+    "onChange:v=>s([[\"NOTPROTON_CX_APP\",v.data]])})," \
+    "!isn&&btl&&(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:\"Launch via Windows Steam (VAC Anti-Cheat)\"," \
+    "checked:vc===\"1\"||(vc===\"\"&&btl===\"Steam\")," \
+    "onChange:v=>s([[\"NOTPROTON_VAC_STEAM\",v?\"1\":\"0\"]])})," \
+    "!isn&&btl&&(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:\"Terminate Bottle on Game Exit\"," \
+    "checked:tb!==\"0\"," \
+    "onChange:v=>s([[\"NOTPROTON_TERMINATE_BOTTLE\",v?\"1\":\"0\"]])})" \
+    "]},\"btl\")," \
     "npCx&&(0," RT ".jsxs)(" BARREL ".XY,{label:npL(\"Graphics\",\"图形\",\"Grafica\"),children:[" \
-    "(0," RT ".jsx)(" BARREL ".m,{rgOptions:B,selectedOption:b," \
+    "!isn&&(0," RT ".jsx)(" BARREL ".m,{rgOptions:B,selectedOption:b," \
     "onChange:v=>s([[\"CX_GRAPHICS_BACKEND\",w(\"CX_GRAPHICS_BACKEND\",v.data||\"auto\",\"auto\")]]" \
     ".concat(!clearUnused||\"\"===v.data||\"d3dmetal\"===v.data?[]:[[\"D3DM_ENABLE_METALFX\",\"\"]])" \
     ".concat(!clearUnused||\"\"===v.data||\"dxmt\"===v.data?[]:" \
     "[[\"DXMT_METALFX_SPATIAL_SWAPCHAIN\",\"\"],[\"DXMT_CONFIG\",fx(\"\")]])" \
     ".concat(!clearUnused||\"dxmt\"===v.data?[]:[[\"DXMT_ENABLE_NVEXT\",\"\"]]))})," \
     "T(\"MTL_HUD_ENABLED\",npL(\"Metal HUD\",\"Metal 性能监视器\",\"Metal HUD\"))," \
-    "dm&&T(\"D3DM_ENABLE_METALFX\",\"DLSS\")," \
-    "\"dxmt\"===b&&T(\"DXMT_ENABLE_NVEXT\",\"DLSS\")," \
-    "!fex&&D(\"ROSETTA_ADVERTISE_AVX\",npL(\"Advertise AVX2 to Rosetta\",\"向 Rosetta 声明 AVX2 支持\",\"Segnala AVX2 a Rosetta\"))," \
-    "T(\"WINEMSYNC\",\"MSync\")," \
-    "T(\"NOTPROTON_RETINA\",npL(\"High Resolution\",\"高分辨率\",\"Alta risoluzione\"))," \
+    "!isn&&dm&&T(\"D3DM_ENABLE_METALFX\",\"DLSS\")," \
+    "!isn&&\"dxmt\"===b&&T(\"DXMT_ENABLE_NVEXT\",\"DLSS\")," \
+    "!isn&&!fex&&D(\"ROSETTA_ADVERTISE_AVX\",npL(\"Advertise AVX2 to Rosetta\",\"向 Rosetta 声明 AVX2 支持\",\"Segnala AVX2 a Rosetta\"))," \
+    "!isn&&T(\"WINEMSYNC\",\"MSync\")," \
+    "!isn&&T(\"NOTPROTON_RETINA\",npL(\"High Resolution\",\"高分辨率\",\"Alta risoluzione\"))," \
     /* On writes 0, the run script's opt-out, and off writes 1 only to beat a default of 0. */ \
-    "(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:npL(\"Don't Scale Windows DPI (Fixes games that only offer low resolutions when High Resolution is on)\",\"Don't Scale Windows DPI (Fixes games that only offer low resolutions when High Resolution is on)\",\"Don't Scale Windows DPI (Fixes games that only offer low resolutions when High Resolution is on)\")," \
+    "!isn&&(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:npL(\"Don't Scale Windows DPI (Fixes games that only offer low resolutions when High Resolution is on)\",\"Don't Scale Windows DPI (Fixes games that only offer low resolutions when High Resolution is on)\",\"Don't Scale Windows DPI (Fixes games that only offer low resolutions when High Resolution is on)\")," \
     "checked:\"0\"===G(\"NOTPROTON_RETINA_DPI\"),onChange:v=>s([[\"NOTPROTON_RETINA_DPI\",w(\"NOTPROTON_RETINA_DPI\",v?\"0\":\"1\",\"1\")]])},\"NOTPROTON_RETINA_DPI\")" \
     "]},\"gfx\")," \
-    "npCx&&dx&&(0," RT ".jsx)(" BARREL ".XY," \
+    "npCx&&!isn&&dx&&(0," RT ".jsx)(" BARREL ".XY," \
     "{label:npL(\"MetalFX Upscaling (Samples from the resolution the game is set to)\"," \
     "\"MetalFX 超分辨率（以游戏设置的分辨率为采样来源）\",\"Upscaling MetalFX (ingrandisce l'immagine dalla risoluzione del gioco)\")," \
     "children:(0," RT ".jsx)(" BARREL ".m,{rgOptions:U," \
@@ -1548,7 +1577,7 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     "onChange:v=>s(dflt&&v.data===pick(k=>dflt(k)||\"\")" \
     "?[[\"DXMT_METALFX_SPATIAL_SWAPCHAIN\",\"\"],[\"DXMT_CONFIG\",fx(\"\")]]" \
     ":[[\"DXMT_METALFX_SPATIAL_SWAPCHAIN\",v.data?\"1\":\"0\"],[\"DXMT_CONFIG\",fx(v.data)]])})},\"usf\")," \
-    "npCx&&dx&&(0," RT ".jsx)(" BARREL ".XY," \
+    "npCx&&!isn&&dx&&(0," RT ".jsx)(" BARREL ".XY," \
     "{label:npL(\"DXMT Frame Rate Limit\"," \
     "\"DXMT Frame Rate Limit\",\"DXMT Frame Rate Limit\")," \
     "children:(0," RT ".jsx)(" BARREL ".m,{rgOptions:FPS," \
@@ -1556,20 +1585,20 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     "onChange:v=>s(dflt&&v.data===pickFps(k=>dflt(k)||\"\")" \
     "?[[\"DXMT_CONFIG\",fxFps(\"\")]]" \
     ":[[\"DXMT_CONFIG\",fxFps(v.data||(dflt?\"0\":\"\"))]])})},\"fps\")," \
-    "npCx&&(0," RT ".jsxs)(" BARREL ".XY,{label:npL(\"Controllers\",\"控制器\",\"Controller\"),children:[" \
+    "npCx&&!isn&&(0," RT ".jsxs)(" BARREL ".XY,{label:npL(\"Controllers\",\"控制器\",\"Controller\"),children:[" \
     "T(\"NOTPROTON_RAW_CONTROLLERS\",npL(\"Let Games Read Controllers Directly (May break Steam Input. Not recommended)\"," \
     "\"允许游戏直接读取控制器（可能导致 Steam Input 失效，不推荐）\"," \
     "\"Lascia che i giochi leggano direttamente i controller (pu\\u00f2 interferire con Steam Input, sconsigliato)\"))," \
     "T(\"NOTPROTON_DISABLE_HIDRAW\",npL(\"Disable hidraw\",\"停用 hidraw\",\"Disattiva hidraw\"))" \
     "]},\"ctl\")," \
-    "npCx&&fex&&(0," RT ".jsx)(" BARREL ".XY,{label:\"FEX\"," \
+    "npCx&&!isn&&fex&&(0," RT ".jsx)(" BARREL ".XY,{label:\"FEX\"," \
     "children:D(\"FEX_X87REDUCEDPRECISION\"," \
     "\"Reduced x87 Precision (Reducing precision improves game performance, is enabled by default in CrossOver Preview)\")},\"fex\")," \
-    "npCx&&(0," RT ".jsxs)(" BARREL ".XY,{label:npL(\"Miscellaneous\",\"Miscellaneous\",\"Miscellaneous\"),children:[" \
+    "npCx&&!isn&&(0," RT ".jsxs)(" BARREL ".XY,{label:npL(\"Miscellaneous\",\"Miscellaneous\",\"Miscellaneous\"),children:[" \
     "(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:npL(\"Disable macOS Game Mode\",\"Disable macOS Game Mode\",\"Disable macOS Game Mode\")," \
     "checked:\"0\"===G(\"NOTPROTON_GAME_MODE\"),onChange:v=>s([[\"NOTPROTON_GAME_MODE\",w(\"NOTPROTON_GAME_MODE\",v?\"0\":\"1\",\"1\")]])},\"NOTPROTON_GAME_MODE\")" \
     "]},\"misc\")," \
-    "exe," \
+    "!isn&&exe," \
     "dev&&(npRows.length||vids.length)?(0," RT ".jsx)(" BARREL ".J1,{children:(0," RT ".jsx)(" BARREL ".XY," \
     "{label:npL(\"Developer\",\"开发者\",\"Developer\")," \
     "children:vids.map(V).concat(npRows.filter(f=>!f.dep||on1(f.dep))" \

@@ -1372,6 +1372,95 @@ case "$verb" in
     ;;
 esac
 
+# Native macOS port (.app) support
+resolve_native_app() {
+  val="$1"
+  case "$val" in
+    *.app)
+      [ -d "$val" ] && { printf '%s\n' "$val"; return 0; }
+      [ -n "$STEAM_COMPAT_INSTALL_PATH" ] && [ -d "$STEAM_COMPAT_INSTALL_PATH/$val" ] && {
+        printf '%s\n' "$STEAM_COMPAT_INSTALL_PATH/$val"; return 0;
+      }
+      [ -d "/Applications/$val" ] && { printf '%s\n' "/Applications/$val"; return 0; }
+      ;;
+  esac
+  case "$val" in
+    ""|0|1|auto|true|TRUE|yes|YES) ;;
+    *)
+      [ -n "$STEAM_COMPAT_INSTALL_PATH" ] && [ -d "$STEAM_COMPAT_INSTALL_PATH/$val.app" ] && {
+        printf '%s\n' "$STEAM_COMPAT_INSTALL_PATH/$val.app"; return 0;
+      }
+      [ -d "/Applications/$val.app" ] && { printf '%s\n' "/Applications/$val.app"; return 0; }
+      ;;
+  esac
+  if [ -n "$STEAM_COMPAT_INSTALL_PATH" ] && [ -d "$STEAM_COMPAT_INSTALL_PATH" ]; then
+    for candidate in "$STEAM_COMPAT_INSTALL_PATH"/*.app; do
+      [ -d "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+    done
+  fi
+  return 1
+}
+
+bottle_dir=""
+if [ -n "$NOTPROTON_BOTTLE" ]; then
+  if [ -d "$HOME/Library/Application Support/CrossOver/Bottles/$NOTPROTON_BOTTLE" ]; then
+    bottle_dir="$HOME/Library/Application Support/CrossOver/Bottles/$NOTPROTON_BOTTLE"
+  elif [ -d "$NOTPROTON_BOTTLE" ]; then
+    bottle_dir="$NOTPROTON_BOTTLE"
+  fi
+  echo "bottle: NOTPROTON_BOTTLE=$NOTPROTON_BOTTLE (dir=$bottle_dir)" >> "$log" 2>&1 || true
+fi
+
+# Option A: Auto-link game from CrossOver bottle to macOS Steam
+if [ -n "$bottle_dir" ] && [ -n "$app_id" ] && [ "$app_id" != 0 ]; then
+  bottle_steamapps="$bottle_dir/drive_c/Program Files (x86)/Steam/steamapps"
+  steam_steamapps="$HOME/Library/Application Support/Steam/steamapps"
+  if [ -n "$STEAM_COMPAT_DATA_PATH" ]; then
+    inferred_steamapps="$(dirname "$(dirname "$(dirname "$STEAM_COMPAT_DATA_PATH")")")/steamapps"
+    [ -d "$inferred_steamapps" ] && steam_steamapps="$inferred_steamapps"
+  fi
+  if [ -d "$bottle_steamapps" ] && [ -d "$steam_steamapps" ]; then
+    b_acf="$bottle_steamapps/appmanifest_$app_id.acf"
+    if [ -f "$b_acf" ]; then
+      s_acf="$steam_steamapps/appmanifest_$app_id.acf"
+      if [ ! -e "$s_acf" ] || [ -L "$s_acf" ]; then
+        ln -sf "$b_acf" "$s_acf" 2>/dev/null || true
+        echo "=== linked bottle appmanifest for app $app_id to macOS Steam ===" >> "$log" 2>&1 || true
+      fi
+      inst_dir=$(awk -F'"' '/"installdir"/ {print $4}' "$b_acf" 2>/dev/null || true)
+      if [ -n "$inst_dir" ] && [ -d "$bottle_steamapps/common/$inst_dir" ]; then
+        mkdir -p "$steam_steamapps/common" 2>/dev/null || true
+        s_game="$steam_steamapps/common/$inst_dir"
+        if [ -L "$s_game" ]; then
+          rm -f "$s_game" 2>/dev/null || true
+          ln -s "$bottle_steamapps/common/$inst_dir" "$s_game" 2>/dev/null || true
+          echo "=== linked bottle game directory ($inst_dir) to macOS Steam ===" >> "$log" 2>&1 || true
+        elif [ ! -e "$s_game" ]; then
+          ln -s "$bottle_steamapps/common/$inst_dir" "$s_game" 2>/dev/null || true
+          echo "=== linked bottle game directory ($inst_dir) to macOS Steam ===" >> "$log" 2>&1 || true
+        elif [ -d "$s_game" ]; then
+          sz=$(du -sm "$s_game" 2>/dev/null | awk '{print $1}')
+          if [ -n "$sz" ] && [ "$sz" -lt 50 ]; then
+            rm -rf "$s_game" 2>/dev/null || true
+            ln -s "$bottle_steamapps/common/$inst_dir" "$s_game" 2>/dev/null || true
+            echo "=== replaced stub game directory ($inst_dir, ${sz}MB) with bottle symlink ===" >> "$log" 2>&1 || true
+          fi
+        fi
+      fi
+    fi
+  fi
+fi
+
+use_bottle_steam=0
+if [ -n "$bottle_dir" ]; then
+  win_steam="$bottle_dir/drive_c/Program Files (x86)/Steam/steam.exe"
+  if [ -f "$win_steam" ]; then
+    if [ "${NOTPROTON_VAC_STEAM:-1}" != "0" ]; then
+      use_bottle_steam=1
+    fi
+  fi
+fi
+
 prefix_machine() {
   dll="$WINEPREFIX/drive_c/windows/system32/ntdll.dll"
   [ -f "$dll" ] || return 1
@@ -1423,6 +1512,65 @@ alert_safe() {
   # shellcheck disable=SC1003 # the pair deletes a literal backslash, not a quote
   printf '%s' "$1" | tr -d '"\\'
 }
+
+case "${NOTPROTON_NATIVE_APP:-}" in
+  ""|0|false|FALSE|no|NO) ;;
+  *)
+    target="${1:-}"
+    is_game_target=0
+    case "$target" in
+      "$STEAM_COMPAT_INSTALL_PATH"/*) is_game_target=1 ;;
+    esac
+    if [ "$verb" = "run" ] && [ "$is_game_target" = 0 ]; then
+      echo "=== skipping helper ($target) for native macOS app ===" >> "$log" 2>&1 || true
+      trap - EXIT
+      exit 0
+    fi
+    native_app=$(resolve_native_app "$NOTPROTON_NATIVE_APP") || native_app=""
+    if [ -z "$native_app" ] || [ ! -d "$native_app" ]; then
+      echo "=== native macOS app not found (NOTPROTON_NATIVE_APP=$NOTPROTON_NATIVE_APP, install=$STEAM_COMPAT_INSTALL_PATH) ===" >> "$log" 2>&1 || true
+      show_alert "Native macOS App Not Found" "Could not find a .app bundle for this game in $(alert_safe "$STEAM_COMPAT_INSTALL_PATH"). Place the .app inside the game folder or set NOTPROTON_NATIVE_APP=/path/to/Game.app in Launch Options."
+      exit 1
+    fi
+
+    trap - EXIT
+    [ $# -gt 0 ] && shift
+    echo "=== launching native macOS app: $native_app ===" >> "$log" 2>&1 || true
+
+    cf_exec=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$native_app/Contents/Info.plist" 2>/dev/null || true)
+    lsregister="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Support/lsregister"
+    [ -x "$lsregister" ] && "$lsregister" -f "$native_app" >> "$log" 2>&1 || true
+
+    if [ $# -gt 0 ]; then
+      set -- --args "$@"
+    fi
+    [ -n "${MTL_HUD_ENABLED:-}" ] && set -- --env "MTL_HUD_ENABLED=$MTL_HUD_ENABLED" "$@"
+    [ -n "${SteamAppId:-}" ] && set -- --env "SteamAppId=$SteamAppId" "$@"
+    [ -n "${SteamGameId:-}" ] && set -- --env "SteamGameId=$SteamGameId" "$@"
+
+    native_open_pid=""
+    # shellcheck disable=SC2329 # invoked by trap below
+    terminate_native() {
+      echo "=== termination signal received, stopping native app $native_app ===" >> "$log" 2>&1 || true
+      if [ -n "$cf_exec" ]; then
+        pkill -TERM -f "$native_app/Contents/MacOS/$cf_exec" 2>/dev/null || true
+        sleep 0.5
+        pkill -KILL -f "$native_app/Contents/MacOS/$cf_exec" 2>/dev/null || true
+      else
+        pkill -TERM -f "$native_app/Contents/MacOS/" 2>/dev/null || true
+      fi
+      [ -n "$native_open_pid" ] && kill "$native_open_pid" 2>/dev/null || true
+    }
+    trap terminate_native TERM INT HUP
+
+    open -n -W -a "$native_app" "$@" >> "$log" 2>&1 &
+    native_open_pid=$!
+    status=0
+    wait "$native_open_pid" || status=$?
+    echo "=== native app exited status=$status ===" >> "$log" 2>&1 || true
+    exit $status
+    ;;
+esac
 
 # The log path reaches AppleScript as an argument, so a quote in it cannot end a string.
 show_rebuild_failure() {
@@ -2586,7 +2734,20 @@ native_vc_runtime() {
   done
 }
 
-if [ -n "$STEAM_COMPAT_DATA_PATH" ]; then
+if [ -n "$bottle_dir" ]; then
+  export WINEPREFIX="$bottle_dir"
+  if [ "$use_bottle_steam" = 0 ]; then
+    msync_from=launch-options
+    if [ -z "$WINEMSYNC" ] && [ -n "$STEAM_COMPAT_DATA_PATH" ] && [ -r "$STEAM_COMPAT_DATA_PATH/notproton-msync" ]; then
+      WINEMSYNC=$(tr -d ' \t\n' \
+        < "$STEAM_COMPAT_DATA_PATH/notproton-msync" 2>/dev/null || true)
+      msync_from=carried-over
+    fi
+    [ -n "$WINEMSYNC" ] || msync_from=default
+    export WINEMSYNC="${WINEMSYNC:-0}"
+    echo "sync: WINEMSYNC=$WINEMSYNC from $msync_from" >> "$log" 2>&1 || true
+  fi
+elif [ -n "$STEAM_COMPAT_DATA_PATH" ]; then
   export WINEPREFIX="$STEAM_COMPAT_DATA_PATH/pfx"
   stage_step="prefix lock"
   prepare_prefix_directory
@@ -2750,7 +2911,7 @@ place_bridge_file() {
   bridge_origin "$1"
   cp -c -fp "$origin" "$2" 2>/dev/null || cp -fp "$bridge_src/$1" "$2" 2>> "$log"
 }
-if [ -d "$bridge_src" ] && [ -n "$WINEPREFIX" ]; then
+if [ "$use_bottle_steam" = 0 ] && [ -d "$bridge_src" ] && [ -n "$WINEPREFIX" ]; then
   stage_step="bridge staging"
   mkdir -p "$prefix_steam"
   bridge_cache=""
@@ -2860,7 +3021,159 @@ if [ "$foreground" = 0 ]; then
   exit $status
 fi
 
+if [ "$use_bottle_steam" = 1 ]; then
+  cx_wine=""
+  case "$NOTPROTON_CX_APP" in
+    "CrossOver"|"CrossOver.app")
+      for p in "/Applications/CrossOver.app" "$HOME/Applications/CrossOver.app"; do
+        if [ -x "$p/Contents/SharedSupport/CrossOver/bin/wine" ]; then
+          cx_wine="$p/Contents/SharedSupport/CrossOver/bin/wine"
+          break
+        fi
+      done
+      ;;
+    "CrossOver Preview"|"CrossOver Preview.app")
+      for p in "/Applications/CrossOver Preview.app" "$HOME/Applications/CrossOver Preview.app"; do
+        if [ -x "$p/Contents/SharedSupport/CrossOver/bin/wine" ]; then
+          cx_wine="$p/Contents/SharedSupport/CrossOver/bin/wine"
+          break
+        fi
+      done
+      ;;
+    "CrossOver Preview Rosetta"|"CrossOver Preview Rosetta.app")
+      for p in "/Applications/CrossOver Preview Rosetta.app" "$HOME/Applications/CrossOver Preview Rosetta.app"; do
+        if [ -x "$p/Contents/SharedSupport/CrossOver/bin/wine" ]; then
+          cx_wine="$p/Contents/SharedSupport/CrossOver/bin/wine"
+          break
+        fi
+      done
+      ;;
+  esac
+
+  if [ -z "$cx_wine" ] && [ -n "$NOTPROTON_CX_APP" ] && [ -x "$NOTPROTON_CX_APP/Contents/SharedSupport/CrossOver/bin/wine" ]; then
+    cx_wine="$NOTPROTON_CX_APP/Contents/SharedSupport/CrossOver/bin/wine"
+  fi
+
+  if [ -z "$cx_wine" ]; then
+    is_preview_bottle=0
+    if [ -n "$bottle_dir" ] && [ -f "$bottle_dir/cxbottle.conf" ]; then
+      if grep -q '"Preview" *= *"1"' "$bottle_dir/cxbottle.conf" 2>/dev/null; then
+        is_preview_bottle=1
+      fi
+    fi
+
+    if [ "$is_preview_bottle" = 1 ]; then
+      for app in "/Applications/CrossOver Preview.app" "/Applications/CrossOver Preview Rosetta.app" "/Applications/CrossOver.app"; do
+        if [ -x "$app/Contents/SharedSupport/CrossOver/bin/wine" ]; then
+          cx_wine="$app/Contents/SharedSupport/CrossOver/bin/wine"
+          break
+        fi
+      done
+    else
+      for app in "/Applications/CrossOver.app" "/Applications/CrossOver Preview.app" "/Applications/CrossOver Preview Rosetta.app"; do
+        if [ -x "$app/Contents/SharedSupport/CrossOver/bin/wine" ]; then
+          cx_wine="$app/Contents/SharedSupport/CrossOver/bin/wine"
+          break
+        fi
+      done
+    fi
+  fi
+
+  if [ -z "$cx_wine" ] && [ -n "$CX_ROOT" ] && [ -x "$CX_ROOT/bin/wine" ]; then
+    cx_wine="$CX_ROOT/bin/wine"
+  fi
+
+  cx_wineserver=""
+  if [ -n "$cx_wine" ]; then
+    cx_bindir=$(dirname "$cx_wine")
+    for w in "$cx_bindir/wineserver-arm64" "$cx_bindir/wineserver" "$cx_bindir/wineserver-x86"; do
+      if [ -x "$w" ]; then
+        cx_wineserver="$w"
+        break
+      fi
+    done
+  fi
+
+  echo "=== launching via Windows Steam in bottle $NOTPROTON_BOTTLE for VAC (appid $app_id) ===" >> "$log" 2>&1 || true
+  echo "=== using CrossOver wine: $cx_wine (selection=$NOTPROTON_CX_APP) ===" >> "$log" 2>&1 || true
+
+  terminate_bottle() {
+    if [ "${NOTPROTON_TERMINATE_BOTTLE:-1}" = "0" ]; then
+      return 0
+    fi
+    echo "=== terminating bottle $NOTPROTON_BOTTLE (freeing memory) ===" >> "$log" 2>&1 || true
+
+    # 1. Ask Steam to shut down cleanly
+    "$cx_wine" --bottle "$NOTPROTON_BOTTLE" --cx-app "C:/Program Files (x86)/Steam/steam.exe" -shutdown >> "$log" 2>&1 || true
+    sleep 1
+
+    # 2. Stop the bottle's wineserver
+    if [ -n "$cx_wineserver" ] && [ -x "$cx_wineserver" ]; then
+      WINEPREFIX="$bottle_dir" "$cx_wineserver" -k 2>/dev/null || true
+      sleep 0.5
+      WINEPREFIX="$bottle_dir" "$cx_wineserver" -k=9 2>/dev/null || true
+    fi
+
+    # 3. Clean up any remaining processes with open files in the bottle directory
+    if command -v lsof >/dev/null 2>&1 && [ -d "$bottle_dir" ]; then
+      bottle_pids=$(lsof -t +D "$bottle_dir" 2>/dev/null | grep -v "^$$$" | sort -u || true)
+      if [ -n "$bottle_pids" ]; then
+        echo "=== killing lingering bottle pids: $bottle_pids ===" >> "$log" 2>&1 || true
+        kill -9 $bottle_pids 2>/dev/null || true
+      fi
+    fi
+    echo "=== bottle $NOTPROTON_BOTTLE terminated ===" >> "$log" 2>&1 || true
+  }
+
+  game_pid=""
+  cleanup_game() {
+    if [ -n "$game_pid" ] && kill -0 "$game_pid" 2>/dev/null; then
+      echo "=== STOP requested from macOS Steam: terminating game process $game_pid ===" >> "$log" 2>&1 || true
+      kill "$game_pid" 2>/dev/null || true
+      sleep 0.5
+    fi
+    terminate_bottle
+    exit 0
+  }
+  trap cleanup_game INT TERM
+
+  "$cx_wine" --bottle "$NOTPROTON_BOTTLE" --cx-app "C:/Program Files (x86)/Steam/steam.exe" -applaunch "$app_id" >> "$log" 2>&1 &
+  launch_pid=$!
+
+  target_bin=$(basename "$target")
+  for i in $(seq 1 90); do
+    if [ -n "$target_bin" ]; then
+      game_pid=$(pgrep -if "$target_bin" 2>/dev/null | head -1 || true)
+    fi
+    if [ -n "$game_pid" ]; then
+      break
+    fi
+    if ! kill -0 "$launch_pid" 2>/dev/null; then
+      if ! pgrep -if "steam.exe" >/dev/null 2>&1 && ! pgrep -if "wineserver" >/dev/null 2>&1; then
+        echo "=== launcher exited and no wine/steam active ===" >> "$log" 2>&1 || true
+        break
+      fi
+    fi
+    sleep 0.5
+  done
+
+  if [ -n "$game_pid" ]; then
+    echo "=== monitoring game process $target_bin (pid $game_pid) ===" >> "$log" 2>&1 || true
+    while kill -0 "$game_pid" 2>/dev/null; do
+      sleep 1
+    done
+    echo "=== game process $target_bin exited ===" >> "$log" 2>&1 || true
+    terminate_bottle
+  else
+    echo "=== game process $target_bin not found within timeout, waiting on launcher pid $launch_pid ===" >> "$log" 2>&1 || true
+    wait "$launch_pid" 2>/dev/null || true
+    terminate_bottle
+  fi
+  exit 0
+fi
+
 stage_step="launcher bundle"
+
 # Fixes CrossOver window focus issues
 steam_root="$(dirname "$(dirname "$(dirname "$STEAM_COMPAT_DATA_PATH")")")"
 manifest="$steam_root/steamapps/appmanifest_$app_id.acf"
