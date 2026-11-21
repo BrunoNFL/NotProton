@@ -14,7 +14,7 @@ struct PrefixesView: View {
             if !model.hasLoaded {
                 ProgressView("Looking for prefixes")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.prefixes.isEmpty {
+            } else if model.prefixes.isEmpty && model.bottles.isEmpty {
                 ContentUnavailableView(
                     String(localized: "No Prefixes"),
                     systemImage: "externaldrive",
@@ -24,7 +24,14 @@ struct PrefixesView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                table
+                VStack(spacing: 0) {
+                    if !model.prefixes.isEmpty {
+                        table
+                    }
+                    if !model.bottles.isEmpty {
+                        bottlesSection
+                    }
+                }
             }
         }
         .navigationTitle("Prefixes")
@@ -383,5 +390,81 @@ struct PrefixesView: View {
 
     private func report(_ row: StatusRow) -> some View {
         row.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+    }
+
+    private var bottlesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            HStack {
+                Text("External CrossOver Bottles")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 4)
+
+            List(model.bottles) { bottle in
+                Section {
+                    if bottle.installedApps.isEmpty {
+                        Text("No Steam games detected in bottle")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(bottle.installedApps) { app in
+                            HStack {
+                                Image(systemName: "gamecontroller.fill")
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(app.name)
+                                        .font(.headline)
+                                    Text("App ID: \(app.appID)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if app.isLinked {
+                                    Label("Linked to macOS Steam", systemImage: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                        .font(.callout)
+                                    Button("Unlink") {
+                                        model.unlinkApp(app)
+                                    }
+                                    .buttonStyle(.bordered)
+                                } else {
+                                    Button("Link to macOS Steam") {
+                                        model.linkApp(app, from: bottle)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text(bottle.name)
+                            .font(.subheadline.bold())
+                        if bottle.hasWindowsSteam {
+                            Text("Windows Steam")
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.15))
+                                .foregroundStyle(Color.blue)
+                                .clipShape(Capsule())
+                        }
+                        Text(bottle.isPreview ? "Preview" : "Release")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15))
+                            .foregroundStyle(.secondary)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+            .listStyle(.inset)
+        }
     }
 }

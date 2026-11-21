@@ -9,6 +9,7 @@ import Observation
 final class PrefixesModel {
 
     private(set) var prefixes: [WinePrefix] = []
+    private(set) var bottles: [CrossOverBottle] = []
     private(set) var usage: [String: PrefixUsage] = [:]
     // A load that finishes in the middle of a rebuild or backup must not end the loading state
     var isLoading: Bool { listing || working }
@@ -134,6 +135,30 @@ final class PrefixesModel {
             let measured = await Task.detached { PrefixStore.usage(of: prefix) }.value
             guard run == loadGeneration else { return }
             usage[prefix.id] = measured
+        }
+
+        let foundBottles = await Task.detached { PrefixStore.crossOverBottles() }.value
+        guard run == loadGeneration else { return }
+        bottles = foundBottles
+    }
+
+    func linkApp(_ app: BottleApp, from bottle: CrossOverBottle) {
+        do {
+            try PrefixStore.linkBottleApp(app, from: bottle)
+            outcome = "Linked \(app.name) to macOS Steam. The game is now recognized as installed."
+            Task { await load() }
+        } catch {
+            report = FailureReport([error])
+        }
+    }
+
+    func unlinkApp(_ app: BottleApp) {
+        do {
+            try PrefixStore.unlinkBottleApp(appID: app.appID, installdir: app.installdir)
+            outcome = "Unlinked \(app.name) from macOS Steam."
+            Task { await load() }
+        } catch {
+            report = FailureReport([error])
         }
     }
 

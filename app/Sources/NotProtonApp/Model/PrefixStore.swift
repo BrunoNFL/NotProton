@@ -454,6 +454,155 @@ enum PrefixStore {
 
         return result.outputLost || !result.stderr.isEmpty
     }
+
+    static func crossOverBottles(
+        root: URL = SupportPaths.crossOverBottles,
+        steamApps: URL = SupportPaths.Steam.userData.appending(path: "steamapps")
+    ) -> [CrossOverBottle] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var bottles: [CrossOverBottle] = []
+        let steamAppsDir = steamApps
+
+        for entry in entries {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: entry.path(percentEncoded: false), isDirectory: &isDir), isDir.boolValue else { continue }
+            let name = entry.lastPathComponent
+            let steamExe = entry.appending(path: "drive_c/Program Files (x86)/Steam/steam.exe")
+            let hasSteam = fm.fileExists(atPath: steamExe.path(percentEncoded: false))
+
+            var apps: [BottleApp] = []
+            let bottleSteamapps = entry.appending(path: "drive_c/Program Files (x86)/Steam/steamapps")
+            if let manifestEntries = try? fm.contentsOfDirectory(at: bottleSteamapps, includingPropertiesForKeys: nil) {
+                for manifest in manifestEntries where manifest.lastPathComponent.hasPrefix("appmanifest_") && manifest.pathExtension == "acf" {
+                    let filename = manifest.lastPathComponent
+                    let appID = String(filename.dropFirst("appmanifest_".count).dropLast(".acf".count))
+                    guard !appID.isEmpty else { continue }
+
+                    let appName = manifestValue("name", manifestURL: manifest) ?? "App \(appID)"
+                    let installdir = manifestValue("installdir", manifestURL: manifest)
+                    let dstManifest = steamAppsDir.appending(path: filename)
+                    let isLinked = fm.fileExists(atPath: dstManifest.path(percentEncoded: false))
+
+                    apps.append(
+                        BottleApp(
+                            appID: appID,
+                            name: appName,
+                            installdir: installdir,
+                            manifestURL: manifest,
+                            isLinked: isLinked
+                        )
+                    )
+                }
+            }
+
+            let isPreview = (try? String(contentsOf: entry.appending(path: "cxbottle.conf"), encoding: .utf8))?
+                .contains("\"Preview\" = \"1\"") == true
+
+            bottles.append(
+                CrossOverBottle(
+                    name: name,
+                    url: entry,
+                    hasWindowsSteam: hasSteam,
+                    isPreview: isPreview,
+                    installedApps: apps.sorted { $0.name < $1.name }
+                )
+            )
+        }
+
+        return bottles.sorted { $0.name < $1.name }
+    }
+
+    private static func manifestValue(_ key: String, manifestURL: URL) -> String? {
+        guard let text = try? String(contentsOf: manifestURL, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n") {
+            let fields = line.split(separator: "\"").map(String.init)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            if fields.count >= 2, fields[0] == key { return fields[1] }
+        }
+        return nil
+    }
+
+    static func linkBottleApp(
+        _ app: BottleApp,
+        from bottle: CrossOverBottle,
+        steamApps: URL = SupportPaths.Steam.userData.appending(path: "steamapps")
+    ) throws {
+        let fm = FileManager.default
+        let steamSteamapps = steamApps
+        try fm.createDirectory(at: steamSteamapps, withIntermediateDirectories: true)
+
+        let dstManifest = steamSteamapps.appending(path: "appmanifest_\(app.appID).acf")
+        if fm.fileExists(atPath: dstManifest.path(percentEncoded: false)) ||
+           (try? dstManifest.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+            try? fm.removeItem(at: dstManifest)
+        }
+        try fm.createSymbolicLink(at: dstManifest, withDestinationURL: app.manifestURL)
+
+        if let folder = app.installdir {
+            let bottleCommon = bottle.url.appending(path: "drive_c/Program Files (x86)/Steam/steamapps/common/\(folder)")
+            if fm.fileExists(atPath: bottleCommon.path(percentEncoded: false)) {
+                let dstCommonDir = steamSteamapps.appending(path: "common")
+                try fm.createDirectory(at: dstCommonDir, withIntermediateDirectories: true)
+                let dstGame = dstCommonDir.appending(path: folder)
+                let isSymlink = (try? dstGame.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+                if isSymlink {
+                    try? fm.removeItem(at: dstGame)
+                } else if fm.fileExists(atPath: dstGame.path(percentEncoded: false)) {
+                    // Check if it's a small placeholder directory (< 50 MB)
+                    let allocated = (try? dstGame.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0
+                    if allocated < 50_000_000 {
+                        try? fm.removeItem(at: dstGame)
+                    }
+                }
+                if !fm.fileExists(atPath: dstGame.path(percentEncoded: false)) {
+                    try fm.createSymbolicLink(at: dstGame, withDestinationURL: bottleCommon)
+                }
+            }
+        }
+    }
+
+    static func unlinkBottleApp(
+        appID: String,
+        installdir: String? = nil,
+        steamApps: URL = SupportPaths.Steam.userData.appending(path: "steamapps")
+    ) throws {
+        let fm = FileManager.default
+        let steamSteamapps = steamApps
+        let dstManifest = steamSteamapps.appending(path: "appmanifest_\(appID).acf")
+        if (try? dstManifest.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+            try fm.removeItem(at: dstManifest)
+        }
+        if let folder = installdir {
+            let dstGame = steamSteamapps.appending(path: "common/\(folder)")
+            if (try? dstGame.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+                try fm.removeItem(at: dstGame)
+            }
+        }
+    }
+}
+
+struct CrossOverBottle: Sendable, Hashable, Identifiable {
+    let name: String
+    let url: URL
+    let hasWindowsSteam: Bool
+    let isPreview: Bool
+    let installedApps: [BottleApp]
+
+    var id: String { name }
+}
+
+struct BottleApp: Sendable, Hashable, Identifiable {
+    let appID: String
+    let name: String
+    let installdir: String?
+    let manifestURL: URL
+    let isLinked: Bool
+
+    var id: String { appID }
 }
 
 struct PrefixClaim {

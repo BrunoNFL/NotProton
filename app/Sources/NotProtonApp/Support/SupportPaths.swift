@@ -25,6 +25,7 @@ enum SupportPaths {
     static var backups: URL { support.appending(path: "backups") }
     static var plugins: URL { support.appending(path: "plugins") }
     static var launchers: URL { support.appending(path: "launchers") }
+    static var crossOverBottles: URL { applicationSupport.appending(path: "CrossOver/Bottles") }
 
     static var signatures: URL {
         support.appending(path: "signatures/macos.arm64")
