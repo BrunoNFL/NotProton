@@ -1541,17 +1541,34 @@ case "${NOTPROTON_NATIVE_APP:-}" in
     lsregister="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Support/lsregister"
     [ -x "$lsregister" ] && "$lsregister" -f "$native_app" >> "$log" 2>&1 || true
 
-    if [ $# -gt 0 ]; then
-      set -- --args "$@"
-    fi
-    [ -n "${MTL_HUD_ENABLED:-}" ] && set -- --env "MTL_HUD_ENABLED=$MTL_HUD_ENABLED" "$@"
-    [ -n "${SteamAppId:-}" ] && set -- --env "SteamAppId=$SteamAppId" "$@"
-    [ -n "${SteamGameId:-}" ] && set -- --env "SteamGameId=$SteamGameId" "$@"
+    shim="$np_support/overlay-shim.dylib"
+    inserts=""
+    case "${NOTPROTON_NATIVE_OVERLAY:-1}" in
+      0|false|FALSE|no|NO)
+        echo "=== native overlay disabled by NOTPROTON_NATIVE_OVERLAY=$NOTPROTON_NATIVE_OVERLAY ===" >> "$log" 2>&1 || true
+        ;;
+      *)
+        inserts="${STEAM_DYLD_INSERT_LIBRARIES:-}"
+        if [ -n "$inserts" ] && [ -f "$shim" ]; then
+          export NOTPROTON_OVERLAY_SHIM="$shim"
+          inserts="$shim:$inserts"
+        fi
+        if [ -n "$inserts" ]; then
+          echo "=== overlay injected from $inserts ===" >> "$log" 2>&1 || true
+        else
+          echo "=== client staged no overlay renderer, overlay disabled ===" >> "$log" 2>&1 || true
+        fi
+        ;;
+    esac
 
+    native_pid=""
     native_open_pid=""
     # shellcheck disable=SC2329 # invoked by trap below
     terminate_native() {
       echo "=== termination signal received, stopping native app $native_app ===" >> "$log" 2>&1 || true
+      if [ -n "$native_pid" ] && kill -0 "$native_pid" 2>/dev/null; then
+        kill -TERM "$native_pid" 2>/dev/null || true
+      fi
       if [ -n "$cf_exec" ]; then
         pkill -TERM -f "$native_app/Contents/MacOS/$cf_exec" 2>/dev/null || true
         sleep 0.5
@@ -1563,10 +1580,28 @@ case "${NOTPROTON_NATIVE_APP:-}" in
     }
     trap terminate_native TERM INT HUP
 
-    open -n -W -a "$native_app" "$@" >> "$log" 2>&1 &
-    native_open_pid=$!
-    status=0
-    wait "$native_open_pid" || status=$?
+    if [ -n "$cf_exec" ] && [ -x "$native_app/Contents/MacOS/$cf_exec" ]; then
+      native_exe="$native_app/Contents/MacOS/$cf_exec"
+      (
+        [ -z "$inserts" ] || export DYLD_INSERT_LIBRARIES="$inserts"
+        exec "$native_exe" "$@"
+      ) >> "$log" 2>&1 &
+      native_pid=$!
+      /usr/bin/caffeinate -d -i -w "$native_pid" >> "$log" 2>&1 &
+      status=0
+      wait "$native_pid" || status=$?
+    else
+      if [ $# -gt 0 ]; then
+        set -- --args "$@"
+      fi
+      [ -n "${MTL_HUD_ENABLED:-}" ] && set -- --env "MTL_HUD_ENABLED=$MTL_HUD_ENABLED" "$@"
+      [ -n "${SteamAppId:-}" ] && set -- --env "SteamAppId=$SteamAppId" "$@"
+      [ -n "${SteamGameId:-}" ] && set -- --env "SteamGameId=$SteamGameId" "$@"
+      open -n -W -a "$native_app" "$@" >> "$log" 2>&1 &
+      native_open_pid=$!
+      status=0
+      wait "$native_open_pid" || status=$?
+    fi
     echo "=== native app exited status=$status ===" >> "$log" 2>&1 || true
     exit $status
     ;;

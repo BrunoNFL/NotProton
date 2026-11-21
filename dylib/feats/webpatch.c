@@ -1540,7 +1540,8 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     "npCx&&app&&(0," RT ".jsxs)(" BARREL ".XY,{label:\"CrossOver Bottle / Prefix\",children:[" \
     "(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:\"Launch Native macOS Port (.app)\"," \
     "checked:isn," \
-    "onChange:v=>s([[\"NOTPROTON_NATIVE_APP\",v?\"1\":\"\"]].concat(v?[[\"NOTPROTON_BOTTLE\",\"\"],[\"NOTPROTON_VAC_STEAM\",\"\"],[\"NOTPROTON_CX_APP\",\"\"],[\"NOTPROTON_TERMINATE_BOTTLE\",\"\"]]:[]))})," \
+    "onChange:v=>s([[\"NOTPROTON_NATIVE_APP\",v?\"1\":\"\"]].concat(v?[[\"NOTPROTON_BOTTLE\",\"\"],[\"NOTPROTON_VAC_STEAM\",\"\"],[\"NOTPROTON_CX_APP\",\"\"],[\"NOTPROTON_TERMINATE_BOTTLE\",\"\"]]:[[\"NOTPROTON_NATIVE_OVERLAY\",\"\"]]))})," \
+    "isn&&D(\"NOTPROTON_NATIVE_OVERLAY\",\"Inject Steam Overlay\")," \
     "!isn&&(0," RT ".jsx)(" BARREL ".m,{rgOptions:rgB,selectedOption:btl," \
     "onChange:v=>s([[\"NOTPROTON_BOTTLE\",v.data]].concat(v.data?[]:[[\"NOTPROTON_VAC_STEAM\",\"\"],[\"NOTPROTON_CX_APP\",\"\"],[\"NOTPROTON_TERMINATE_BOTTLE\",\"\"]]))})," \
     "!isn&&btl&&(0," RT ".jsx)(" BARREL ".m,{rgOptions:CXA,selectedOption:cx," \
