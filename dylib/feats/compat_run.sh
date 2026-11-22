@@ -1583,7 +1583,10 @@ case "${NOTPROTON_NATIVE_APP:-}" in
     if [ -n "$cf_exec" ] && [ -x "$native_app/Contents/MacOS/$cf_exec" ]; then
       native_exe="$native_app/Contents/MacOS/$cf_exec"
       (
-        [ -z "$inserts" ] || export DYLD_INSERT_LIBRARIES="$inserts"
+        if [ -n "$inserts" ]; then
+          export DYLD_INSERT_LIBRARIES="$inserts"
+          export NOTPROTON_DYLD_INSERT_LIBRARIES="$inserts"
+        fi
         exec "$native_exe" "$@"
       ) >> "$log" 2>&1 &
       native_pid=$!
