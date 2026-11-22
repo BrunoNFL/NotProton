@@ -1538,8 +1538,6 @@ case "${NOTPROTON_NATIVE_APP:-}" in
     echo "=== launching native macOS app: $native_app ===" >> "$log" 2>&1 || true
 
     cf_exec=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$native_app/Contents/Info.plist" 2>/dev/null || true)
-    lsregister="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Support/lsregister"
-    [ -x "$lsregister" ] && "$lsregister" -f "$native_app" >> "$log" 2>&1 || true
 
     shim="$np_support/overlay-shim.dylib"
     inserts=""
@@ -1601,7 +1599,7 @@ case "${NOTPROTON_NATIVE_APP:-}" in
       [ -n "${MTL_HUD_ENABLED:-}" ] && set -- --env "MTL_HUD_ENABLED=$MTL_HUD_ENABLED" "$@"
       [ -n "${SteamAppId:-}" ] && set -- --env "SteamAppId=$SteamAppId" "$@"
       [ -n "${SteamGameId:-}" ] && set -- --env "SteamGameId=$SteamGameId" "$@"
-      open -n -W -a "$native_app" "$@" >> "$log" 2>&1 &
+      open -W -a "$native_app" "$@" >> "$log" 2>&1 &
       native_open_pid=$!
       /usr/bin/caffeinate -d -i -w "$native_open_pid" >> "$log" 2>&1 &
       status=0
