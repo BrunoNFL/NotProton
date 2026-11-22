@@ -1580,32 +1580,30 @@ case "${NOTPROTON_NATIVE_APP:-}" in
     }
     trap terminate_native TERM INT HUP
 
-    if [ -n "$cf_exec" ] && [ -x "$native_app/Contents/MacOS/$cf_exec" ]; then
+    if [ -n "$inserts" ] && [ -n "$cf_exec" ] && [ -x "$native_app/Contents/MacOS/$cf_exec" ]; then
       native_exe="$native_app/Contents/MacOS/$cf_exec"
       (
         unset CX_ROOT CX_HOME WINELOADER WINESERVER WINEDLLPATH WINEDLLOVERRIDES WINEMSYNC WINEPREFIX WINEDEBUG
         unset SDL_GAMECONTROLLER_IGNORE_DEVICES SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD SDL_GAMECONTROLLER_USE_BUTTON_LABELS SDL_JOYSTICK_HIDAPI_STEAMXBOX SteamGenericControllers SteamVirtualGamepadInfo_Proton
         unset STEAM_COMPAT_DATA_PATH STEAM_COMPAT_INSTALL_PATH STEAM_COMPAT_CLIENT_INSTALL_PATH STEAM_COMPAT_APP_ID STEAM_COMPAT_LIBRARY_PATHS STEAM_COMPAT_MOUNTS STEAM_COMPAT_PROTON STEAM_COMPAT_SHADER_PATH STEAM_COMPAT_TOOL_PATHS STEAM_EXTRA_COMPAT_TOOLS_PATHS STEAM_DYLD_INSERT_LIBRARIES
         export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
-        if [ -n "$inserts" ]; then
-          export DYLD_INSERT_LIBRARIES="$inserts"
-          export NOTPROTON_DYLD_INSERT_LIBRARIES="$inserts"
-        fi
-        exec "$native_exe" "$@"
+        export DYLD_INSERT_LIBRARIES="$inserts"
+        export NOTPROTON_DYLD_INSERT_LIBRARIES="$inserts"
+        cd / 2>/dev/null || true
+        exec "$native_exe" < /dev/null
       ) >> "$log" 2>&1 &
       native_pid=$!
       /usr/bin/caffeinate -d -i -w "$native_pid" >> "$log" 2>&1 &
       status=0
       wait "$native_pid" || status=$?
     else
-      if [ $# -gt 0 ]; then
-        set -- --args "$@"
-      fi
+      set --
       [ -n "${MTL_HUD_ENABLED:-}" ] && set -- --env "MTL_HUD_ENABLED=$MTL_HUD_ENABLED" "$@"
       [ -n "${SteamAppId:-}" ] && set -- --env "SteamAppId=$SteamAppId" "$@"
       [ -n "${SteamGameId:-}" ] && set -- --env "SteamGameId=$SteamGameId" "$@"
       open -n -W -a "$native_app" "$@" >> "$log" 2>&1 &
       native_open_pid=$!
+      /usr/bin/caffeinate -d -i -w "$native_open_pid" >> "$log" 2>&1 &
       status=0
       wait "$native_open_pid" || status=$?
     fi
